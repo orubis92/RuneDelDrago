@@ -135,7 +135,10 @@
     requestAnimationFrame(draw);
     if (!lv) return;
     const n = lv.n, cs = cell;
-    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#14100d'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const vg = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.2, canvas.width / 2, canvas.height / 2, canvas.width * 0.75);
+    vg.addColorStop(0, 'rgba(60,45,30,.25)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const elapsed = now - lastChange;
     for (let i = 0; i < n * n; i++) {
       const t = lv.tiles[i];
@@ -176,126 +179,311 @@
   }
   const easeOut = k => 1 - Math.pow(1 - k, 3);
 
-  function rr(x, y, w, h, r) {
-    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  function rr(c, x, y, w, h, r) {
+    c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+
+  // ---- basi delle tessere: pre-renderizzate e messe in cache -------------
+  const baseCache = new Map();
+  function tileBaseImage(t, cs, i) {
+    const key = t.type + '|' + (t.locked ? 'L' : '') + '|' + Math.round(cs) + '|' + i;
+    let img = baseCache.get(key);
+    if (img) return img;
+    if (baseCache.size > 400) baseCache.clear();
+    img = document.createElement('canvas'); img.width = img.height = Math.ceil(cs);
+    const c = img.getContext('2d');
+    c.translate(cs / 2, cs / 2);
+    const rng = E.mulberry32(i * 131 + 17);
+    const g = cs * 0.045;
+    if (t.type === 'rock') {
+      // pozzo scuro + masso irregolare sfaccettato
+      c.fillStyle = '#17130f'; rr(c, -cs / 2 + g, -cs / 2 + g, cs - 2 * g, cs - 2 * g, cs * 0.12); c.fill();
+      const pts = [];
+      const k = 7 + Math.floor(rng() * 3);
+      for (let p = 0; p < k; p++) { const a = (p / k) * Math.PI * 2, r = cs * (0.26 + rng() * 0.12); pts.push([Math.cos(a) * r, Math.sin(a) * r * 0.92]); }
+      c.beginPath(); pts.forEach((p, q) => q ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath();
+      c.fillStyle = '#2b2521'; c.fill();
+      c.strokeStyle = '#3a322c'; c.lineWidth = cs * 0.02; c.stroke();
+      // sfaccettature chiare in alto a sinistra, scure in basso a destra
+      c.save(); c.clip();
+      c.fillStyle = 'rgba(255,240,220,.07)'; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (let p = 1; p < 4; p++) c.lineTo(pts[p][0], pts[p][1]); c.lineTo(-cs * 0.05, -cs * 0.02); c.closePath(); c.fill();
+      c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.moveTo(pts[4][0], pts[4][1]); for (let p = 5; p < k; p++) c.lineTo(pts[p][0], pts[p][1]); c.lineTo(cs * 0.04, cs * 0.06); c.closePath(); c.fill();
+      c.restore();
+      baseCache.set(key, img); return img;
+    }
+    const isIce = t.type === 'ice';
+    // lastra di pietra con leggera sfumatura
+    const grad = c.createLinearGradient(-cs / 2, -cs / 2, cs / 2, cs / 2);
+    if (isIce) { grad.addColorStop(0, '#2f5266'); grad.addColorStop(1, '#213a4a'); }
+    else { grad.addColorStop(0, '#352e28'); grad.addColorStop(1, '#27211c'); }
+    c.fillStyle = grad; rr(c, -cs / 2 + g, -cs / 2 + g, cs - 2 * g, cs - 2 * g, cs * 0.12); c.fill();
+    // grana
+    for (let p = 0; p < 26; p++) {
+      const x = (rng() - 0.5) * (cs - 3 * g), y = (rng() - 0.5) * (cs - 3 * g), r = cs * (0.006 + rng() * 0.014);
+      c.fillStyle = rng() < 0.5 ? 'rgba(255,235,210,.05)' : 'rgba(0,0,0,.18)';
+      c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    }
+    if (isIce) {
+      // venature di brina
+      c.strokeStyle = 'rgba(200,235,255,.16)'; c.lineWidth = cs * 0.012; c.beginPath();
+      for (let p = 0; p < 5; p++) { const x = (rng() - 0.5) * cs * 0.8, y = (rng() - 0.5) * cs * 0.8; c.moveTo(x, y); c.lineTo(x + (rng() - 0.5) * cs * 0.4, y + (rng() - 0.5) * cs * 0.4); }
+      c.stroke();
+    }
+    // bordo smussato: luce in alto/sinistra, ombra in basso/destra
+    c.lineWidth = cs * 0.022;
+    c.strokeStyle = isIce ? 'rgba(190,230,255,.28)' : 'rgba(255,235,210,.13)';
+    c.beginPath(); c.moveTo(-cs / 2 + g + cs * 0.12, cs / 2 - g); c.lineTo(-cs / 2 + g, cs / 2 - g - cs * 0.12); c.lineTo(-cs / 2 + g, -cs / 2 + g + cs * 0.12); c.arcTo(-cs / 2 + g, -cs / 2 + g, -cs / 2 + g + cs * 0.12, -cs / 2 + g, cs * 0.12); c.lineTo(cs / 2 - g - cs * 0.12, -cs / 2 + g); c.stroke();
+    c.strokeStyle = 'rgba(0,0,0,.35)';
+    c.beginPath(); c.moveTo(cs / 2 - g - cs * 0.12, -cs / 2 + g); c.lineTo(cs / 2 - g, -cs / 2 + g + cs * 0.12); c.lineTo(cs / 2 - g, cs / 2 - g - cs * 0.12); c.arcTo(cs / 2 - g, cs / 2 - g, cs / 2 - g - cs * 0.12, cs / 2 - g, cs * 0.12); c.lineTo(-cs / 2 + g + cs * 0.12, cs / 2 - g); c.stroke();
+    if (t.locked) { c.strokeStyle = C.gold; c.lineWidth = cs * 0.035; rr(c, -cs / 2 + g, -cs / 2 + g, cs - 2 * g, cs - 2 * g, cs * 0.12); c.stroke(); }
+    baseCache.set(key, img); return img;
   }
 
   function drawTileBase(t, cs, i) {
-    const g = cs * 0.04;
-    if (t.type === 'rock') {
-      ctx.fillStyle = C.rock; rr(-cs / 2 + g, -cs / 2 + g, cs - 2 * g, cs - 2 * g, cs * 0.12); ctx.fill();
-      ctx.fillStyle = '#2a2420';
-      const rng = E.mulberry32(i * 31 + 7);
-      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc((rng() - 0.5) * cs * 0.6, (rng() - 0.5) * cs * 0.6, cs * (0.05 + rng() * 0.07), 0, 7); ctx.fill(); }
-      return;
+    const img = tileBaseImage(t, cs, i);
+    ctx.drawImage(img, -cs / 2, -cs / 2, cs, cs);
+  }
+
+  // ---- canali ed elementi -------------------------------------------------
+  const DIRV = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+  function strokeMask(m, w, half, color, cap) {
+    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = cap; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let bits = 0;
+    for (let d = 0; d < 4; d++) if (m & (1 << d)) { ctx.moveTo(0, 0); ctx.lineTo(DIRV[d][0] * half, DIRV[d][1] * half); bits++; }
+    ctx.stroke();
+    if (bits === 1) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, 0, w * 0.5, 0, 7); ctx.fill(); }
+  }
+
+  // fulmine frastagliato lungo ogni ramo aperto
+  function strokeBolt(m, half, cs, now, i) {
+    const seed = Math.floor(now / 70) * 7 + i * 13;
+    const rng = E.mulberry32(seed);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (let d = 0; d < 4; d++) {
+      if (!(m & (1 << d))) continue;
+      const dx = DIRV[d][0], dy = DIRV[d][1], px = -dy, py = dx;
+      const pts = [[0, 0]];
+      for (let s = 1; s <= 3; s++) { const f = s / 4, off = (rng() - 0.5) * cs * 0.16; pts.push([dx * half * f + px * off, dy * half * f + py * off]); }
+      pts.push([dx * half, dy * half]);
+      const path = () => { ctx.beginPath(); pts.forEach((p, q) => q ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); };
+      ctx.strokeStyle = 'rgba(127,227,255,.55)'; ctx.lineWidth = cs * 0.11; path(); ctx.stroke();
+      ctx.strokeStyle = '#dff7ff'; ctx.lineWidth = cs * 0.04; path(); ctx.stroke();
     }
-    ctx.fillStyle = t.type === 'ice' ? '#284455' : C.stone;
-    rr(-cs / 2 + g, -cs / 2 + g, cs - 2 * g, cs - 2 * g, cs * 0.12); ctx.fill();
-    ctx.strokeStyle = t.locked ? C.gold : (t.type === 'ice' ? '#3f6a82' : C.stoneEdge);
-    ctx.lineWidth = t.locked ? cs * 0.035 : cs * 0.02; ctx.stroke();
   }
 
   function drawChannels(t, cs, i, now, elapsed) {
     const m = t.base; // disegnato nel sistema ruotato
     if (!m) return;
-    const w = cs * 0.3, half = cs / 2 - cs * 0.04;
+    const w = cs * 0.3, half = cs / 2 - cs * 0.045;
     const isIce = t.type === 'ice';
     const hasFire = sim.fire[i] && sim.fireDepth[i] * 70 < elapsed;
     const hasBolt = sim.lit[i] && sim.litDepth[i] * 70 < elapsed;
     const cracked = sim.cracked[i] && hasBolt;
-    // scanalatura
-    let col = isIce && !cracked ? C.ice : C.groove;
-    strokeMask(m, w, half, col, 'round');
+    // scanalatura incisa: ombra interna in alto, bordo chiaro in basso
+    strokeMask(m, w, half, isIce && !cracked ? '#dff2ff' : '#100d0b', 'round');
+    if (!(isIce && !cracked)) {
+      ctx.save(); ctx.translate(0, cs * 0.012); strokeMask(m, w * 0.62, half, 'rgba(255,235,210,.05)', 'round'); ctx.restore();
+    }
     if (isIce && !cracked) {
-      strokeMask(m, w * 0.45, half, '#e9f6ff', 'round');
+      // cristallo: sfaccettature chiare
+      strokeMask(m, w * 0.55, half, '#f6fbff', 'round');
+      ctx.save(); ctx.translate(-cs * 0.02, -cs * 0.02); strokeMask(m, w * 0.18, half, 'rgba(255,255,255,.9)', 'round'); ctx.restore();
+      strokeMask(m, w, half, 'rgba(120,180,220,.35)', 'round');
     }
     if (cracked) {
-      strokeMask(m, w, half, C.iceDark, 'round');
-      // crepe
-      ctx.strokeStyle = C.crack; ctx.lineWidth = cs * 0.025; ctx.beginPath();
+      strokeMask(m, w, half, '#8ec2e6', 'round');
+      strokeMask(m, w * 0.6, half, '#b9dcf3', 'round');
+      // crepe e schegge
       const rng = E.mulberry32(i * 17 + 3);
-      for (let k = 0; k < 3; k++) { ctx.moveTo((rng() - 0.5) * cs * 0.5, (rng() - 0.5) * cs * 0.5); ctx.lineTo((rng() - 0.5) * cs * 0.6, (rng() - 0.5) * cs * 0.6); ctx.lineTo((rng() - 0.5) * cs * 0.7, (rng() - 0.5) * cs * 0.7); }
+      ctx.strokeStyle = '#173247'; ctx.lineWidth = cs * 0.022; ctx.lineCap = 'round'; ctx.beginPath();
+      for (let k = 0; k < 4; k++) { let x = (rng() - 0.5) * cs * 0.3, y = (rng() - 0.5) * cs * 0.3; ctx.moveTo(x, y); for (let s = 0; s < 3; s++) { x += (rng() - 0.5) * cs * 0.3; y += (rng() - 0.5) * cs * 0.3; ctx.lineTo(x, y); } }
       ctx.stroke();
     }
-    if (hasBolt) {
-      const flick = 0.75 + 0.25 * Math.sin(now / 60 + i);
-      ctx.globalAlpha = flick;
-      strokeMask(m, w * 0.5, half, C.bolt, 'round');
-      ctx.setLineDash([cs * 0.08, cs * 0.12]); ctx.lineDashOffset = -now / 25;
-      strokeMask(m, w * 0.18, half, C.boltCore, 'butt');
-      ctx.setLineDash([]); ctx.globalAlpha = 1;
-    }
+    if (hasBolt) strokeBolt(m, half, cs, now, i);
     if (hasFire) {
       const flick = 0.85 + 0.15 * Math.sin(now / 90 + i * 2);
-      ctx.shadowColor = C.fire; ctx.shadowBlur = cs * 0.25 * flick;
-      strokeMask(m, w * 0.62, half, C.fire, 'round');
+      ctx.shadowColor = C.fire; ctx.shadowBlur = cs * 0.28 * flick;
+      strokeMask(m, w * 0.66, half, '#e8611a', 'round');
       ctx.shadowBlur = 0;
-      strokeMask(m, w * 0.25, half, C.fireCore, 'round');
+      strokeMask(m, w * 0.42, half, C.fire, 'round');
+      strokeMask(m, w * (0.16 + 0.06 * Math.sin(now / 60 + i)), half, '#fff0b0', 'round');
+      // braci che scorrono
+      const rng = E.mulberry32(i * 7 + 1);
+      for (let d = 0; d < 4; d++) {
+        if (!(m & (1 << d))) continue;
+        for (let k = 0; k < 2; k++) {
+          const f = ((now / 900 + rng()) % 1), r = cs * 0.025;
+          ctx.fillStyle = 'rgba(255,240,180,' + (0.9 * (1 - f)) + ')';
+          ctx.beginPath(); ctx.arc(DIRV[d][0] * half * f + (rng() - 0.5) * cs * 0.08, DIRV[d][1] * half * f + (rng() - 0.5) * cs * 0.08, r, 0, 7); ctx.fill();
+        }
+      }
     }
-    // tappi delle estremità cieche
+    // nodo centrale delle estremità cieche
     if (!hasFire && !hasBolt && !isIce) {
-      ctx.fillStyle = '#1a1512'; ctx.beginPath(); ctx.arc(0, 0, w * 0.55, 0, 7); ctx.fill();
+      ctx.fillStyle = '#0b0908'; ctx.beginPath(); ctx.arc(0, 0, w * 0.55, 0, 7); ctx.fill();
     }
-  }
-
-  function strokeMask(m, w, half, color, cap) {
-    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = cap; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    const dirs = [[0, -half], [half, 0], [0, half], [-half, 0]];
-    let bits = 0;
-    for (let d = 0; d < 4; d++) if (m & (1 << d)) { ctx.moveTo(0, 0); ctx.lineTo(dirs[d][0], dirs[d][1]); bits++; }
-    ctx.stroke();
-    if (bits === 1) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, 0, w * 0.5, 0, 7); ctx.fill(); }
   }
 
   function drawOverlay(t, cs, i, now, elapsed) {
     const hasFire = sim.fire[i] && sim.fireDepth[i] * 70 < elapsed;
     const zap = sim.zapped.includes(i) && sim.litDepth[i] * 70 < elapsed;
-    if (t.type === 'dragon') {
-      // testa del drago vista dall'alto, con la bocca rivolta verso l'apertura
-      ctx.save();
-      const d = [1, 2, 4, 8].indexOf(t.base & 15);
-      if (d >= 0) ctx.rotate((d * 90 + 180) * Math.PI / 180);
-      ctx.fillStyle = zap ? '#7a2a2a' : '#2f5d3a';
-      ctx.beginPath(); ctx.arc(0, 0, cs * 0.3, 0, 7); ctx.fill();
-      ctx.strokeStyle = zap ? C.red : '#8fd48f'; ctx.lineWidth = cs * 0.03; ctx.stroke();
-      // corna
-      ctx.strokeStyle = '#c9d6a8'; ctx.lineWidth = cs * 0.05; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(-cs * 0.16, -cs * 0.2); ctx.lineTo(-cs * 0.26, -cs * 0.34); ctx.moveTo(cs * 0.16, -cs * 0.2); ctx.lineTo(cs * 0.26, -cs * 0.34); ctx.stroke();
-      // occhi
-      ctx.fillStyle = zap ? '#fff' : '#ffd23f';
-      ctx.beginPath(); ctx.arc(-cs * 0.1, -cs * 0.06, cs * 0.05, 0, 7); ctx.arc(cs * 0.1, -cs * 0.06, cs * 0.05, 0, 7); ctx.fill();
-      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(-cs * 0.1, -cs * 0.06, cs * 0.02, 0, 7); ctx.arc(cs * 0.1, -cs * 0.06, cs * 0.02, 0, 7); ctx.fill();
-      // narici / bocca
-      ctx.fillStyle = C.fire; ctx.beginPath(); ctx.arc(0, cs * 0.12, cs * 0.06 + Math.sin(now / 120) * cs * 0.01, 0, 7); ctx.fill();
-      ctx.restore();
-      if (zap) label('⚡', cs);
-    } else if (t.type === 'door') {
-      // porta ad arco
-      ctx.fillStyle = hasFire ? '#4a3418' : '#3a2f28';
-      ctx.beginPath(); ctx.moveTo(-cs * 0.26, cs * 0.3); ctx.lineTo(-cs * 0.26, -cs * 0.05); ctx.arc(0, -cs * 0.05, cs * 0.26, Math.PI, 0); ctx.lineTo(cs * 0.26, cs * 0.3); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = zap ? C.red : (hasFire ? C.gold : '#6b5a4c'); ctx.lineWidth = cs * 0.035; ctx.stroke();
-      ctx.strokeStyle = zap ? C.red : (hasFire ? C.fireCore : '#8a7360'); ctx.lineWidth = cs * 0.03;
-      ctx.beginPath(); ctx.moveTo(0, -cs * 0.2); ctx.lineTo(0, cs * 0.2); ctx.moveTo(-cs * 0.12, -cs * 0.05); ctx.lineTo(cs * 0.12, -cs * 0.05); ctx.stroke();
-      if (zap) label('⚡', cs);
-    } else if (t.type === 'rune') {
-      // runa del tuono: cerchio con sigillo a zig-zag
-      const pulse = 0.9 + 0.1 * Math.sin(now / 200);
-      ctx.fillStyle = '#1e2b3a'; ctx.beginPath(); ctx.arc(0, 0, cs * 0.26 * pulse, 0, 7); ctx.fill();
-      ctx.strokeStyle = C.bolt; ctx.lineWidth = cs * 0.03; ctx.stroke();
-      ctx.strokeStyle = '#eaffff'; ctx.lineWidth = cs * 0.05; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.beginPath(); ctx.moveTo(cs * 0.06, -cs * 0.17); ctx.lineTo(-cs * 0.07, cs * 0.01); ctx.lineTo(cs * 0.04, cs * 0.01); ctx.lineTo(-cs * 0.06, cs * 0.17); ctx.stroke();
-    }
+    if (t.type === 'dragon') drawDragon(t, cs, i, now, zap);
+    else if (t.type === 'door') drawDoor(t, cs, i, now, hasFire, zap);
+    else if (t.type === 'rune') drawRune(t, cs, i, now);
     if (t.type === 'ice' && sim.blocked[i] && !sim.cracked[i]) {
-      // fuoco che sbatte contro il ghiaccio: vapore
-      const k = (now / 700) % 1;
-      ctx.globalAlpha = 0.6 * (1 - k);
-      ctx.fillStyle = '#ffffff';
-      for (let p = 0; p < 3; p++) { ctx.beginPath(); ctx.arc((p - 1) * cs * 0.12, -cs * 0.05 - k * cs * 0.25 + p * cs * 0.03, cs * 0.05 + k * cs * 0.05, 0, 7); ctx.fill(); }
+      // vapore: il fuoco sbatte contro il ghiaccio
+      for (let p = 0; p < 4; p++) {
+        const k = ((now / 900) + p * 0.25) % 1;
+        ctx.globalAlpha = 0.55 * (1 - k);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc((p - 1.5) * cs * 0.1 + Math.sin(now / 300 + p) * cs * 0.03, cs * 0.05 - k * cs * 0.35, cs * 0.04 + k * cs * 0.07, 0, 7); ctx.fill();
+      }
       ctx.globalAlpha = 1;
     }
     if (t.locked) { ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(cs * 0.38, -cs * 0.38, cs * 0.05, 0, 7); ctx.fill(); }
+  }
+
+  function drawDragon(t, cs, i, now, zap) {
+    // testa vista dall'alto, muso rivolto verso l'apertura (+y locale)
+    const d = [1, 2, 4, 8].indexOf(t.base & 15);
+    const n = lv.n, x = i % n, y = (i / n) | 0;
+    let breathing = false;
+    if (d >= 0) { const nx = x + DIRV[d][0], ny = y + DIRV[d][1]; if (nx >= 0 && ny >= 0 && nx < n && ny < n) breathing = !!sim.fire[ny * n + nx]; }
+    ctx.save();
+    if (d >= 0) ctx.rotate((d * 90 + 180) * Math.PI / 180);
+    const s = cs;
+    // collo
+    ctx.fillStyle = zap ? '#5a2a2a' : '#24462c';
+    ctx.beginPath(); ctx.ellipse(0, -s * 0.3, s * 0.2, s * 0.16, 0, 0, 7); ctx.fill();
+    // testa
+    const g = ctx.createLinearGradient(-s * 0.25, 0, s * 0.25, 0);
+    if (zap) { g.addColorStop(0, '#6a2f2f'); g.addColorStop(0.5, '#8a3a3a'); g.addColorStop(1, '#5a2626'); }
+    else { g.addColorStop(0, '#2f6a3c'); g.addColorStop(0.5, '#4a8f52'); g.addColorStop(1, '#2a5b35'); }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.25, -s * 0.22);
+    ctx.quadraticCurveTo(-s * 0.3, s * 0.05, -s * 0.1, s * 0.3);
+    ctx.quadraticCurveTo(0, s * 0.36, s * 0.1, s * 0.3);
+    ctx.quadraticCurveTo(s * 0.3, s * 0.05, s * 0.25, -s * 0.22);
+    ctx.quadraticCurveTo(0, -s * 0.34, -s * 0.25, -s * 0.22);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = zap ? '#c94b4b' : '#173a20'; ctx.lineWidth = s * 0.02; ctx.stroke();
+    // cresta centrale e scaglie
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = s * 0.015;
+    ctx.beginPath(); ctx.moveTo(0, -s * 0.28); ctx.lineTo(0, s * 0.2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc((k % 2 ? 1 : -1) * s * 0.12, -s * 0.15 + k * s * 0.06, s * 0.035, 0, 7); ctx.fill(); }
+    // corna
+    ctx.strokeStyle = '#d9d2b0'; ctx.lineWidth = s * 0.06; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-s * 0.18, -s * 0.24); ctx.quadraticCurveTo(-s * 0.3, -s * 0.32, -s * 0.28, -s * 0.42);
+    ctx.moveTo(s * 0.18, -s * 0.24); ctx.quadraticCurveTo(s * 0.3, -s * 0.32, s * 0.28, -s * 0.42); ctx.stroke();
+    // occhi con pupilla a fessura
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = zap ? '#ffffff' : '#ffd23f';
+      ctx.beginPath(); ctx.ellipse(sx * s * 0.12, -s * 0.06, s * 0.06, s * 0.045, sx * 0.4, 0, 7); ctx.fill();
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx * s * 0.12, -s * 0.06, s * 0.015, s * 0.04, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#173a20'; ctx.lineWidth = s * 0.02; ctx.beginPath(); ctx.moveTo(sx * s * 0.05, -s * 0.13); ctx.lineTo(sx * s * 0.19, -s * 0.1); ctx.stroke();
+    }
+    // narici
+    ctx.fillStyle = '#0f2415';
+    ctx.beginPath(); ctx.ellipse(-s * 0.05, s * 0.23, s * 0.025, s * 0.018, 0, 0, 7); ctx.ellipse(s * 0.05, s * 0.23, s * 0.025, s * 0.018, 0, 0, 7); ctx.fill();
+    if (breathing) {
+      // getto di fiamma dalla bocca verso il canale
+      const f = 0.85 + 0.15 * Math.sin(now / 70);
+      ctx.shadowColor = C.fire; ctx.shadowBlur = s * 0.2;
+      ctx.fillStyle = 'rgba(255,138,31,.9)';
+      ctx.beginPath(); ctx.moveTo(-s * 0.09, s * 0.28); ctx.quadraticCurveTo(0, s * 0.62 * f, s * 0.09, s * 0.28); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff0b0';
+      ctx.beginPath(); ctx.moveTo(-s * 0.04, s * 0.3); ctx.quadraticCurveTo(0, s * 0.5 * f, s * 0.04, s * 0.3); ctx.closePath(); ctx.fill();
+    } else if (!zap) {
+      // sbuffi di fumo dalle narici
+      for (let p = 0; p < 2; p++) {
+        const k = ((now / 1400) + p * 0.5) % 1;
+        ctx.globalAlpha = 0.35 * (1 - k);
+        ctx.fillStyle = '#cfcfcf';
+        ctx.beginPath(); ctx.arc((p ? 1 : -1) * s * 0.06 + Math.sin(now / 400 + p) * s * 0.02, s * 0.26 + k * s * 0.2, s * 0.02 + k * s * 0.05, 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    if (zap) label('⚡', cs);
+  }
+
+  function drawDoor(t, cs, i, now, open, zap) {
+    const s = cs;
+    // arco di pietra
+    ctx.fillStyle = '#3d342c';
+    ctx.beginPath(); ctx.moveTo(-s * 0.33, s * 0.34); ctx.lineTo(-s * 0.33, -s * 0.04); ctx.arc(0, -s * 0.04, s * 0.33, Math.PI, 0); ctx.lineTo(s * 0.33, s * 0.34); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = zap ? C.red : '#5a4d42'; ctx.lineWidth = s * 0.025; ctx.stroke();
+    // conci
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = s * 0.012; ctx.beginPath();
+    for (let a = 0; a <= 6; a++) { const th = Math.PI + a * Math.PI / 6; ctx.moveTo(Math.cos(th) * s * 0.26, -s * 0.04 + Math.sin(th) * s * 0.26); ctx.lineTo(Math.cos(th) * s * 0.33, -s * 0.04 + Math.sin(th) * s * 0.33); }
+    ctx.stroke();
+    // interno: buio oppure luce calda quando la porta è aperta
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(-s * 0.25, s * 0.34); ctx.lineTo(-s * 0.25, -s * 0.04); ctx.arc(0, -s * 0.04, s * 0.25, Math.PI, 0); ctx.lineTo(s * 0.25, s * 0.34); ctx.closePath(); ctx.clip();
+    if (open) {
+      const g = ctx.createRadialGradient(0, s * 0.1, 0, 0, s * 0.1, s * 0.4);
+      g.addColorStop(0, '#ffd27a'); g.addColorStop(0.6, '#ff8a1f'); g.addColorStop(1, '#7a2f08');
+      ctx.fillStyle = g; ctx.fillRect(-s / 2, -s / 2, s, s);
+      // battenti aperti
+      ctx.fillStyle = '#4a2f18';
+      ctx.fillRect(-s * 0.25, -s * 0.3, s * 0.07, s * 0.65); ctx.fillRect(s * 0.18, -s * 0.3, s * 0.07, s * 0.65);
+    } else {
+      ctx.fillStyle = '#4a3521'; ctx.fillRect(-s / 2, -s / 2, s, s);
+      // assi e bande di ferro
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = s * 0.012; ctx.beginPath();
+      for (let k = -2; k <= 2; k++) { ctx.moveTo(k * s * 0.09, -s * 0.35); ctx.lineTo(k * s * 0.09, s * 0.35); }
+      ctx.stroke();
+      ctx.fillStyle = '#2a2a2e'; ctx.fillRect(-s * 0.25, -s * 0.02, s * 0.5, s * 0.04); ctx.fillRect(-s * 0.25, s * 0.18, s * 0.5, s * 0.04);
+      // runa sigillo al centro
+      ctx.strokeStyle = zap ? C.red : (sim.doorReached ? C.fire : '#8a7360'); ctx.lineWidth = s * 0.025; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -s * 0.18); ctx.lineTo(0, s * 0.14); ctx.moveTo(-s * 0.08, -s * 0.1); ctx.lineTo(0, -s * 0.02); ctx.lineTo(s * 0.08, -s * 0.1); ctx.stroke();
+    }
+    ctx.restore();
+    if (open) {
+      // bagliore che esce dalla porta
+      const f = 0.8 + 0.2 * Math.sin(now / 120);
+      ctx.shadowColor = C.fire; ctx.shadowBlur = s * 0.3 * f;
+      ctx.strokeStyle = C.gold; ctx.lineWidth = s * 0.03;
+      ctx.beginPath(); ctx.moveTo(-s * 0.33, s * 0.34); ctx.lineTo(-s * 0.33, -s * 0.04); ctx.arc(0, -s * 0.04, s * 0.33, Math.PI, 0); ctx.lineTo(s * 0.33, s * 0.34); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    if (zap) label('⚡', cs);
+  }
+
+  function drawRune(t, cs, i, now) {
+    const s = cs, active = sim.lit[i];
+    const pulse = 0.92 + 0.08 * Math.sin(now / 220 + i);
+    // disco di pietra scolpito
+    ctx.fillStyle = '#1d2733'; ctx.beginPath(); ctx.arc(0, 0, s * 0.3, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#3a4c60'; ctx.lineWidth = s * 0.03; ctx.stroke();
+    ctx.strokeStyle = 'rgba(127,227,255,.35)'; ctx.lineWidth = s * 0.012; ctx.beginPath(); ctx.arc(0, 0, s * 0.24, 0, 7); ctx.stroke();
+    // tacche sul bordo
+    ctx.strokeStyle = 'rgba(127,227,255,.5)'; ctx.lineWidth = s * 0.015; ctx.beginPath();
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + now / 4000; ctx.moveTo(Math.cos(a) * s * 0.25, Math.sin(a) * s * 0.25); ctx.lineTo(Math.cos(a) * s * 0.29, Math.sin(a) * s * 0.29); }
+    ctx.stroke();
+    // glifo del tuono
+    ctx.shadowColor = C.bolt; ctx.shadowBlur = s * 0.18 * pulse;
+    ctx.strokeStyle = '#eaffff'; ctx.lineWidth = s * 0.055; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(s * 0.07, -s * 0.18); ctx.lineTo(-s * 0.07, s * 0.01); ctx.lineTo(s * 0.04, s * 0.01); ctx.lineTo(-s * 0.07, s * 0.18); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // archi elettrici intermittenti
+    if (active) {
+      const rng = E.mulberry32(Math.floor(now / 90) + i * 31);
+      ctx.strokeStyle = 'rgba(223,247,255,.8)'; ctx.lineWidth = s * 0.015;
+      for (let k = 0; k < 2; k++) {
+        if (rng() > 0.6) continue;
+        const a = rng() * Math.PI * 2; let x = Math.cos(a) * s * 0.3, y = Math.sin(a) * s * 0.3;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        for (let q = 0; q < 3; q++) { x += (rng() - 0.5) * s * 0.14; y += (rng() - 0.5) * s * 0.14; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+    }
   }
   function label(txt, cs) {
     ctx.font = Math.round(cs * 0.3) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
