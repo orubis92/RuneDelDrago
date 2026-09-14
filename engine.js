@@ -297,6 +297,23 @@
   // Tessera in orientamento "sbagliato" rispetto alla soluzione prevista
   function isMisrotated(t) { return !t.fixed && t.type !== 'rock' && maskOf(t) !== t.base; }
 
+  // Mosse minime per la soluzione prevista: per ogni tessera della soluzione,
+  // il minor numero di rotazioni orarie che riporta la maschera a quella di base.
+  function parMoves(lv) {
+    let total = 0;
+    for (const t of lv.tiles) {
+      if (!t.sol || t.fixed || t.type === 'rock') continue;
+      for (let k = 0; k < 4; k++) if (rotMask(t.base, t.rot + k) === t.base) { total += k; break; }
+    }
+    return total;
+  }
+  // Stelle: 3 = entro il minimo, 2 = entro il 150%, 1 = risolto. Un indizio toglie una stella.
+  function stars(moves, par, hintsUsed) {
+    let s = moves <= par ? 3 : moves <= Math.ceil(par * 1.5) ? 2 : 1;
+    if (hintsUsed > 0) s = Math.min(s, 2);
+    return s;
+  }
+
   // Indizio: sistema una tessera della soluzione e la blocca. Ritorna l'indice o -1.
   function applyHint(lv, rng) {
     const wrong = lv.tiles.map((t, i) => ({ t, i })).filter(o => o.t.sol && isMisrotated(o.t) && !o.t.locked);
@@ -306,5 +323,5 @@
     return o.i;
   }
 
-  return { N, E, S, W, DIRS, rotMask, maskOf, mulberry32, paramsFor, generate, simulate, isMisrotated, applyHint, neighbors };
+  return { N, E, S, W, DIRS, rotMask, maskOf, mulberry32, paramsFor, generate, simulate, isMisrotated, applyHint, neighbors, parMoves, stars };
 });

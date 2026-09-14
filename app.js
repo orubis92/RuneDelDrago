@@ -6,8 +6,9 @@
   const canvas = $('#board'), ctx = canvas.getContext('2d');
   const STORE = 'rdd.state.v1';
 
-  const state = Object.assign({ level: 1, maxLevel: 1, done: {}, totalMoves: 0, hintsUsed: 0 }, load() || {});
-  let lv, sim, moves = 0, hints = 3, lastChange = 0, wonAt = 0, anims = new Map(), cell = 0, pad = 0, dpr = 1;
+  const state = Object.assign({ level: 1, maxLevel: 1, done: {}, totalMoves: 0, hintsUsed: 0, sound: true }, load() || {});
+  for (const k in state.done) if (typeof state.done[k] === 'number') state.done[k] = { m: state.done[k], s: 1 }; // migrazione v1
+  let lv, sim, par = 0, hintsThisLevel = 0, moves = 0, hints = 3, lastChange = 0, wonAt = 0, anims = new Map(), cell = 0, pad = 0, dpr = 1;
 
   function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; } }
   function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { } }
@@ -26,7 +27,9 @@
     state.level = level; save();
     lv = E.generate(level);
     lv.tiles.forEach(t => t.locked = false);
-    moves = 0; hints = 3; wonAt = 0; anims.clear();
+    moves = 0; hints = 3; hintsThisLevel = 0; wonAt = 0; anims.clear();
+    par = E.parMoves(lv);
+    $('#par').textContent = par;
     resim();
     $('#lvl').textContent = level;
     $('#moves').textContent = '0';
@@ -75,11 +78,17 @@
 
   function rotate(i, count) {
     const t = lv.tiles[i];
-    if (t.fixed || t.type === 'rock' || t.locked) { bump(i); return; }
+    if (t.fixed || t.type === 'rock' || t.locked) { bump(i); sfx('thud'); return; }
+    const before = sim;
     t.rot = (t.rot + 1) % 4;
     anims.set(i, { start: performance.now(), from: -90 });
     if (count) { moves++; $('#moves').textContent = moves; }
     resim();
+    sfx('tap');
+    const crackedNow = sim.cracked.reduce((a, b) => a + b, 0), crackedBefore = before.cracked.reduce((a, b) => a + b, 0);
+    if (crackedNow > crackedBefore) sfx('crack');
+    if (sim.zapped.length && !before.zapped.length) sfx('zap');
+    if (sim.win) setTimeout(() => sfx('win'), Math.min(1200, sim.maxDepth * 70));
     if (navigator.vibrate) navigator.vibrate(8);
   }
   function bump(i) { anims.set(i, { start: performance.now(), from: 0, bump: true }); }
@@ -91,12 +100,14 @@
     if (hints <= 0 || sim.win) return;
     const i = E.applyHint(lv);
     if (i < 0) return;
-    hints--; $('#hint').textContent = 'Indizio (' + hints + ')';
-    state.hintsUsed++; save();
+    hints--; hintsThisLevel++; $('#hint').textContent = 'Indizio (' + hints + ')';
+    state.hintsUsed++; save(); sfx('hint');
     anims.set(i, { start: performance.now(), from: -90 });
     resim();
   };
   $('#winNext').onclick = () => startLevel(state.level + 1);
+  $('#winHome').onclick = () => { startLevel(state.level + 1); showHome(); };
+  $('#winRetry').onclick = () => startLevel(state.level);
   $('#help').onclick = () => { $('#rules').hidden = false; };
   $('#rulesClose').onclick = () => { $('#rules').hidden = true; };
   $('#tip').onclick = () => { $('#tip').hidden = true; };
@@ -151,11 +162,14 @@
     if (wonAt && now > wonAt) {
       wonAt = 0;
       if (state.level >= state.maxLevel) state.maxLevel = state.level + 1;
+      const st = E.stars(moves, par, hintsThisLevel);
       const prev = state.done[state.level];
-      state.done[state.level] = prev ? Math.min(prev, moves) : moves;
+      state.done[state.level] = { m: prev ? Math.min(prev.m, moves) : moves, s: prev ? Math.max(prev.s, st) : st };
       state.totalMoves += moves;
       save();
-      $('#winMoves').textContent = moves;
+      $('#winMoves').textContent = moves; $('#winPar').textContent = par;
+      $('#winStars').textContent = '★'.repeat(st) + '☆'.repeat(3 - st);
+      $('#winNote').textContent = st === 3 ? 'Perfetto: nessuna mossa sprecata.' : st === 2 ? (hintsThisLevel ? 'Bene, ma con un indizio.' : 'Bene. Il minimo era ' + par + '.') : 'Risolto. Il minimo era ' + par + ' mosse: riprova per le stelle.';
       $('#win').hidden = false;
       $('#next').disabled = false;
     }
@@ -310,14 +324,17 @@
     if (next) {
       const span = next.from - w.from, at = state.maxLevel - w.from;
       $('#hBar').style.width = Math.round(100 * at / span) + '%';
-      $('#hBarL').textContent = w.name;
-      $('#hBarR').textContent = (next.from - state.maxLevel) + ' livelli a ' + next.name;
+      $('#hBarL').textContent = 'Prossimo mondo tra ' + (next.from - state.maxLevel) + (next.from - state.maxLevel === 1 ? ' livello' : ' livelli');
+      $('#hBarR').textContent = next.name + ' →';
     } else {
       $('#hBar').style.width = '100%';
-      $('#hBarL').textContent = w.name; $('#hBarR').textContent = 'livelli infiniti';
+      $('#hBarL').textContent = 'Ultimo mondo'; $('#hBarR').textContent = 'livelli infiniti';
     }
     const doneCount = Object.keys(state.done).length;
+    let starSum = 0; for (const k in state.done) starSum += state.done[k].s || 0;
     $('#hDone').textContent = doneCount;
+    $('#hStars').textContent = starSum;
+    $('#hSound').textContent = state.sound ? '🔊 Suoni attivi' : '🔇 Suoni disattivati';
     $('#hMoves').textContent = state.totalMoves;
     $('#hHints').textContent = state.hintsUsed;
     $('#hPlay').textContent = doneCount ? 'Continua · livello ' + state.level : 'Inizia l\'avventura';
@@ -330,7 +347,7 @@
       if (L > state.maxLevel) c.classList.add('locked');
       else if (done) c.classList.add('done');
       if (L === state.level) c.classList.add('current');
-      c.innerHTML = L + (done ? '<small>✓ ' + done + '</small>' : '<small>' + E.paramsFor(L).n + '×' + E.paramsFor(L).n + '</small>');
+      c.innerHTML = L + (done ? '<small class="st">' + '★'.repeat(done.s) + '</small>' : '<small>' + E.paramsFor(L).n + '×' + E.paramsFor(L).n + '</small>');
       if (L <= state.maxLevel) c.onclick = () => { startLevel(L); hideHome(); };
       chips.appendChild(c);
     }
@@ -340,6 +357,42 @@
   function hideHome() { $('#home').hidden = true; stopFx(); resize(); }
   $('#hPlay').onclick = () => { startLevel(state.level); hideHome(); };
   $('#hRules').onclick = () => { $('#rules').hidden = false; };
+  $('#hSound').onclick = () => { state.sound = !state.sound; save(); $('#hSound').textContent = state.sound ? '🔊 Suoni attivi' : '🔇 Suoni disattivati'; if (state.sound) sfx('tap'); };
+
+  // ---------- suoni (sintetizzati, nessun file) ----------
+  let ac = null;
+  function sfx(name) {
+    if (!state.sound) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const t0 = ac.currentTime;
+      const tone = (freq, dur, type, gain, delay, slide) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = type; o.frequency.setValueAtTime(freq, t0 + delay);
+        if (slide) o.frequency.exponentialRampToValueAtTime(slide, t0 + delay + dur);
+        g.gain.setValueAtTime(0.0001, t0 + delay); g.gain.exponentialRampToValueAtTime(gain, t0 + delay + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + delay + dur);
+        o.connect(g).connect(ac.destination); o.start(t0 + delay); o.stop(t0 + delay + dur + 0.02);
+      };
+      const noise = (dur, gain, delay, hp) => {
+        const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+        const src = ac.createBufferSource(); src.buffer = buf;
+        const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+        const g = ac.createGain(); g.gain.value = gain;
+        src.connect(f).connect(g).connect(ac.destination); src.start(t0 + delay);
+      };
+      switch (name) {
+        case 'tap': tone(520, 0.06, 'triangle', 0.12, 0, 380); break;
+        case 'thud': tone(120, 0.08, 'sine', 0.15, 0, 80); break;
+        case 'crack': noise(0.18, 0.25, 0, 1800); tone(1400, 0.12, 'sine', 0.08, 0.02, 600); break;
+        case 'zap': noise(0.25, 0.2, 0, 400); tone(160, 0.3, 'sawtooth', 0.12, 0, 60); break;
+        case 'hint': tone(880, 0.12, 'sine', 0.1, 0); tone(1320, 0.18, 'sine', 0.1, 0.1); break;
+        case 'win': [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.35, 'triangle', 0.14, k * 0.11)); noise(0.5, 0.06, 0.3, 3000); break;
+      }
+    } catch (e) { }
+  }
   $('#homeBtn').onclick = showHome;
 
   // particelle: braci che salgono e scintille di fulmine

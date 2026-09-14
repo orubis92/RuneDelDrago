@@ -10,20 +10,19 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap">
 <style>
+  @font-face { font-family:"Cinzel"; font-weight:700; font-style:normal; font-display:swap; src:url("fonts/cinzel-700.woff2") format("woff2"); }
   :root { --bg:#1b1714; --panel:#25201b; --text:#f1e8dc; --muted:#a4958a; --fire:#ff8a1f; --bolt:#7fe3ff; --gold:#e6b84a; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior:none; }
   body { display:flex; flex-direction:column; height:100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); user-select:none; -webkit-user-select:none; touch-action:manipulation; }
-  header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px 6px; gap:10px; flex-wrap:wrap; }
-  header h1 { font-size:18px; margin:0; letter-spacing:.5px; font-weight:700; color:var(--gold); white-space:nowrap; }
+  header { display:flex; align-items:center; padding:8px 12px 4px; gap:10px; }
+  header h1 { flex:1; min-width:0; font-size:17px; margin:0; letter-spacing:.5px; font-weight:700; color:var(--gold); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   header h1 small { color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
-  .stats { display:flex; gap:14px; font-size:13px; color:var(--muted); white-space:nowrap; margin-left:auto; }
+  .stats { display:flex; gap:10px; font-size:12px; color:var(--muted); white-space:nowrap; flex:0 0 auto; }
   .stats b { color:var(--text); font-size:15px; }
-  @media (max-width: 420px) { header h1 small { display:none; } }
+  @media (max-width: 480px) { header h1 small { display:none; } }
   #tip { margin:0 12px 6px; padding:8px 12px; background:#2c3a4a; border-left:3px solid var(--bolt); border-radius:8px; font-size:14px; line-height:1.35; cursor:pointer; }
   #boardWrap { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:6px; }
   canvas { display:block; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.5); touch-action:manipulation; }
@@ -56,12 +55,16 @@
   .bar { height:6px; background:#3b332c; border-radius:3px; overflow:hidden; }
   .bar i { display:block; height:100%; background:linear-gradient(90deg, var(--fire), var(--gold)); border-radius:3px; }
   .barLabel { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:6px; }
-  .kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:12px; }
+  .kpis { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:12px; }
   .kpi { background:rgba(27,23,20,.7); border-radius:10px; padding:8px 10px; }
   .kpi b { display:block; font-size:18px; font-variant-numeric:tabular-nums; }
   .kpi span { font-size:11px; color:var(--muted); letter-spacing:.05em; text-transform:uppercase; }
   .actions { display:flex; flex-direction:column; gap:10px; }
   .actions button { width:100%; padding:16px; font-size:17px; border-radius:14px; }
+  .actions .row2 { display:flex; gap:10px; } .actions .row2 button { flex:1; }
+  .chip small.st { color:var(--gold); letter-spacing:-1px; }
+  .stars { font-size:34px; color:var(--gold); letter-spacing:4px; text-shadow:0 0 16px rgba(255,138,31,.5); margin:-4px 0 4px; }
+  .card .row button:not(.primary) { flex:0 0 auto; min-width:52px; }
   .actions .primary { box-shadow:0 6px 24px rgba(255,138,31,.35); }
   .levels h3 { margin:0 0 8px; font-size:13px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); }
   .chips { display:grid; grid-template-columns:repeat(auto-fill, minmax(52px, 1fr)); gap:8px; }
@@ -91,14 +94,15 @@
         <div class="bar"><i id="hBar" style="width:0%"></i></div>
         <div class="barLabel"><span id="hBarL">Inizio del mondo</span><span id="hBarR">prossimo mondo</span></div>
         <div class="kpis">
-          <div class="kpi"><b id="hDone">0</b><span>tane aperte</span></div>
+          <div class="kpi"><b id="hDone">0</b><span>tane</span></div>
+          <div class="kpi"><b id="hStars">0</b><span>stelle</span></div>
           <div class="kpi"><b id="hMoves">0</b><span>mosse</span></div>
           <div class="kpi"><b id="hHints">0</b><span>indizi</span></div>
         </div>
       </div>
       <div class="actions">
         <button id="hPlay" class="primary">Continua</button>
-        <button id="hRules">Regole</button>
+        <div class="row2"><button id="hRules">Regole</button><button id="hSound">🔊 Suoni attivi</button></div>
       </div>
       <div class="levels">
         <h3>Livelli</h3>
@@ -110,7 +114,7 @@
   <header>
     <button id="homeBtn" title="Home" style="padding:8px 12px;min-height:40px">⌂</button>
     <h1>Rune del Drago<small>enigma a circuiti</small></h1>
-    <div class="stats"><span>Livello <b id="lvl">1</b></span><span>Mosse <b id="moves">0</b></span></div>
+    <div class="stats"><span>Livello <b id="lvl">1</b></span><span>Mosse <b id="moves">0</b> <small>/ <span id="par">0</span></small></span></div>
   </header>
   <div id="tip" hidden></div>
   <div id="boardWrap"><canvas id="board"></canvas></div>
@@ -126,8 +130,9 @@
   <div id="win" class="overlay" hidden>
     <div class="card">
       <h2>Tana raggiunta!</h2>
-      <p>Il soffio del drago ha aperto la porta in <b id="winMoves">0</b> mosse.</p>
-      <div class="row"><button id="winNext" class="primary">Livello successivo ▶</button></div>
+      <div class="stars" id="winStars">★★★</div>
+      <p>Porta aperta in <b id="winMoves">0</b> mosse (minimo <b id="winPar">0</b>). <span id="winNote"></span></p>
+      <div class="row"><button id="winHome">⌂</button><button id="winRetry">↺</button><button id="winNext" class="primary">Livello successivo ▶</button></div>
     </div>
   </div>
 
@@ -141,7 +146,7 @@
         <div class="sw" style="background:#7fe3ff"></div><div><b>Fulmine</b> — parte dalle rune del tuono. Se tocca il drago o la porta, il livello fallisce.</div>
         <div class="sw" style="background:#221d19"></div><div><b>Roccia</b> — non si ruota.</div>
       </div>
-      <p>I livelli sono infiniti e sempre più difficili. Gli indizi sistemano una tessera e la bloccano (segno dorato).</p>
+      <p>I livelli sono infiniti e sempre più difficili. Il contatore "Mosse / n" mostra il minimo teorico: restaci sotto per tre stelle, entro il 150% per due. Gli indizi sistemano una tessera e la bloccano (segno dorato), ma costano una stella.</p>
       <div class="row"><button id="rulesClose" class="primary">Ho capito</button></div>
     </div>
   </div>

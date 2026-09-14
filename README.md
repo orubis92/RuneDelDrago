@@ -15,6 +15,7 @@ lo stesso livello è identico su ogni dispositivo. Difficoltà crescente: grigli
 - `index.html` — pagina, stile, pannelli (regole, vittoria)
 - `engine.js` — generazione livelli e simulazione degli elementi (puro, usabile anche in Node)
 - `app.js` — rendering canvas, input touch, salvataggio progressi (localStorage)
+- `fonts/` — Cinzel (OFL) per il titolo, incluso per l'uso offline
 - `sw.js`, `manifest.webmanifest`, `icons/` — installazione come app e uso offline
 - `test/verify.js` — verifica che N livelli siano generabili, risolvibili e non già risolti
 
