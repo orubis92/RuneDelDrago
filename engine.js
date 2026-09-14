@@ -297,14 +297,12 @@
   // Tessera in orientamento "sbagliato" rispetto alla soluzione prevista
   function isMisrotated(t) { return !t.fixed && t.type !== 'rock' && maskOf(t) !== t.base; }
 
-  // Mosse minime per la soluzione prevista: per ogni tessera della soluzione,
-  // il minor numero di rotazioni orarie che riporta la maschera a quella di base.
+  // Mosse minime per la soluzione prevista. Una "mossa" e' una tessera toccata
+  // (tocchi consecutivi sulla stessa tessera contano uno), quindi il minimo e' il
+  // numero di tessere della soluzione fuori orientamento (simmetrie incluse).
   function parMoves(lv) {
     let total = 0;
-    for (const t of lv.tiles) {
-      if (!t.sol || t.fixed || t.type === 'rock') continue;
-      for (let k = 0; k < 4; k++) if (rotMask(t.base, t.rot + k) === t.base) { total += k; break; }
-    }
+    for (const t of lv.tiles) if (t.sol && isMisrotated(t)) total++;
     return total;
   }
   // Stelle: 3 = entro il minimo, 2 = entro il 150%, 1 = risolto. Un indizio toglie una stella.

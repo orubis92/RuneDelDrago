@@ -8,7 +8,7 @@
 
   const state = Object.assign({ level: 1, maxLevel: 1, done: {}, totalMoves: 0, hintsUsed: 0, sound: true }, load() || {});
   for (const k in state.done) if (typeof state.done[k] === 'number') state.done[k] = { m: state.done[k], s: 1 }; // migrazione v1
-  let lv, sim, par = 0, hintsThisLevel = 0, moves = 0, hints = 3, lastChange = 0, wonAt = 0, anims = new Map(), cell = 0, pad = 0, dpr = 1;
+  let lv, sim, par = 0, hintsThisLevel = 0, lastTile = -1, moves = 0, hints = 3, lastChange = 0, wonAt = 0, anims = new Map(), cell = 0, pad = 0, dpr = 1;
 
   function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; } }
   function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { } }
@@ -27,7 +27,7 @@
     state.level = level; save();
     lv = E.generate(level);
     lv.tiles.forEach(t => t.locked = false);
-    moves = 0; hints = 3; hintsThisLevel = 0; wonAt = 0; anims.clear();
+    moves = 0; lastTile = -1; hints = 3; hintsThisLevel = 0; wonAt = 0; anims.clear();
     par = E.parMoves(lv);
     $('#par').textContent = par;
     resim();
@@ -82,7 +82,8 @@
     const before = sim;
     t.rot = (t.rot + 1) % 4;
     anims.set(i, { start: performance.now(), from: -90 });
-    if (count) { moves++; $('#moves').textContent = moves; }
+    if (count && i !== lastTile) { moves++; $('#moves').textContent = moves; }
+    if (count) lastTile = i;
     resim();
     sfx('tap');
     const crackedNow = sim.cracked.reduce((a, b) => a + b, 0), crackedBefore = before.cracked.reduce((a, b) => a + b, 0);
@@ -172,7 +173,7 @@
       save();
       $('#winMoves').textContent = moves; $('#winPar').textContent = par;
       $('#winStars').textContent = '★'.repeat(st) + '☆'.repeat(3 - st);
-      $('#winNote').textContent = st === 3 ? 'Perfetto: nessuna mossa sprecata.' : st === 2 ? (hintsThisLevel ? 'Bene, ma con un indizio.' : 'Bene. Il minimo era ' + par + '.') : 'Risolto. Il minimo era ' + par + ' mosse: riprova per le stelle.';
+      $('#winNote').textContent = st === 3 ? 'Perfetto: nessuna tessera toccata invano.' : st === 2 ? (hintsThisLevel ? 'Bene, ma con un indizio.' : 'Bene. Il minimo era ' + par + '.') : 'Risolto. Il minimo era ' + par + ' mosse: riprova per le stelle.';
       $('#win').hidden = false;
       $('#next').disabled = false;
     }
