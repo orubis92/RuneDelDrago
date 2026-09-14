@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1b1714">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Rune del Drago</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root { --bg:#1b1714; --panel:#25201b; --text:#f1e8dc; --muted:#a4958a; --fire:#ff8a1f; --bolt:#7fe3ff; --gold:#e6b84a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior:none; }
+  body { display:flex; flex-direction:column; height:100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px 6px; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.5px; font-weight:700; color:var(--gold); white-space:nowrap; }
+  header h1 small { color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
+  .stats { display:flex; gap:14px; font-size:13px; color:var(--muted); white-space:nowrap; margin-left:auto; }
+  .stats b { color:var(--text); font-size:15px; }
+  @media (max-width: 420px) { header h1 small { display:none; } }
+  #tip { margin:0 12px 6px; padding:8px 12px; background:#2c3a4a; border-left:3px solid var(--bolt); border-radius:8px; font-size:14px; line-height:1.35; cursor:pointer; }
+  #boardWrap { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:6px; }
+  canvas { display:block; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.5); touch-action:manipulation; }
+  #status { text-align:center; min-height:22px; font-size:14px; color:var(--muted); padding:4px 12px; }
+  #status.ok { color:#8fd48f; } #status.bad { color:#ff7b7b; } #status.warn { color:#bfe4ff; }
+  footer { display:flex; gap:8px; padding:8px 12px calc(10px + env(safe-area-inset-bottom)); justify-content:center; flex-wrap:wrap; }
+  button { background:var(--panel); color:var(--text); border:1px solid #3b332c; border-radius:12px; padding:12px 16px; font-size:15px; font-weight:600; min-width:48px; min-height:48px; cursor:pointer; }
+  button:active { transform:scale(.96); background:#332b25; }
+  button:disabled { opacity:.35; }
+  button.primary { background:var(--fire); color:#1b1714; border-color:transparent; }
+  .overlay { position:fixed; inset:0; background:rgba(10,8,6,.78); display:flex; align-items:center; justify-content:center; padding:20px; z-index:10; }
+  .card { background:var(--panel); border:1px solid #3b332c; border-radius:18px; padding:22px; max-width:420px; width:100%; max-height:90dvh; overflow:auto; }
+  .card h2 { margin:0 0 10px; color:var(--gold); }
+  .card p { line-height:1.45; margin:8px 0; font-size:15px; }
+  .card .row { display:flex; gap:10px; margin-top:14px; }
+  .card .row button { flex:1; }
+  .legend { display:grid; grid-template-columns:auto 1fr; gap:8px 12px; align-items:center; margin:12px 0; font-size:14px; }
+  .sw { width:22px; height:22px; border-radius:6px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Rune del Drago<small>enigma a circuiti</small></h1>
+    <div class="stats"><span>Livello <b id="lvl">1</b></span><span>Mosse <b id="moves">0</b></span></div>
+  </header>
+  <div id="tip" hidden></div>
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+  <div id="status"></div>
+  <footer>
+    <button id="prev" title="Livello precedente">◀</button>
+    <button id="reset" title="Ricomincia">↺</button>
+    <button id="hint">Indizio (3)</button>
+    <button id="help" title="Regole">?</button>
+    <button id="next" title="Livello successivo">▶</button>
+  </footer>
+
+  <div id="win" class="overlay" hidden>
+    <div class="card">
+      <h2>Tana raggiunta!</h2>
+      <p>Il soffio del drago ha aperto la porta in <b id="winMoves">0</b> mosse.</p>
+      <div class="row"><button id="winNext" class="primary">Livello successivo ▶</button></div>
+    </div>
+  </div>
+
+  <div id="rules" class="overlay" hidden>
+    <div class="card">
+      <h2>Regole</h2>
+      <p>Tocca una tessera per ruotarla di 90°. Due tessere sono collegate solo se entrambe si aprono l'una verso l'altra.</p>
+      <div class="legend">
+        <div class="sw" style="background:#ff8a1f"></div><div><b>Fuoco</b> — parte dalla bocca del drago e deve arrivare alla porta della tana.</div>
+        <div class="sw" style="background:#bfe4ff"></div><div><b>Ghiaccio</b> — blocca il fuoco. Un fulmine che lo raggiunge lo spacca, e lì si scarica: non prosegue oltre.</div>
+        <div class="sw" style="background:#7fe3ff"></div><div><b>Fulmine</b> — parte dalle rune del tuono. Se tocca il drago o la porta, il livello fallisce.</div>
+        <div class="sw" style="background:#221d19"></div><div><b>Roccia</b> — non si ruota.</div>
+      </div>
+      <p>I livelli sono infiniti e sempre più difficili. Gli indizi sistemano una tessera e la bloccano (segno dorato).</p>
+      <div class="row"><button id="rulesClose" class="primary">Ho capito</button></div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
