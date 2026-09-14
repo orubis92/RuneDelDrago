@@ -6,7 +6,7 @@
   const canvas = $('#board'), ctx = canvas.getContext('2d');
   const STORE = 'rdd.state.v1';
 
-  const state = load() || { level: 1, maxLevel: 1 };
+  const state = Object.assign({ level: 1, maxLevel: 1, done: {}, totalMoves: 0, hintsUsed: 0 }, load() || {});
   let lv, sim, moves = 0, hints = 3, lastChange = 0, wonAt = 0, anims = new Map(), cell = 0, pad = 0, dpr = 1;
 
   function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; } }
@@ -92,6 +92,7 @@
     const i = E.applyHint(lv);
     if (i < 0) return;
     hints--; $('#hint').textContent = 'Indizio (' + hints + ')';
+    state.hintsUsed++; save();
     anims.set(i, { start: performance.now(), from: -90 });
     resim();
   };
@@ -150,6 +151,9 @@
     if (wonAt && now > wonAt) {
       wonAt = 0;
       if (state.level >= state.maxLevel) state.maxLevel = state.level + 1;
+      const prev = state.done[state.level];
+      state.done[state.level] = prev ? Math.min(prev, moves) : moves;
+      state.totalMoves += moves;
       save();
       $('#winMoves').textContent = moves;
       $('#win').hidden = false;
@@ -284,10 +288,100 @@
     ctx.fillStyle = '#fff'; ctx.fillText(txt, cs * 0.28, -cs * 0.28);
   }
 
+  // ---------- home ----------
+  const WORLDS = [
+    { from: 1, name: 'La Bocca della Tana' },
+    { from: 4, name: 'Le Grotte di Ghiaccio' },
+    { from: 10, name: 'La Sala del Tuono' },
+    { from: 23, name: 'Il Cuore del Vulcano' },
+    { from: 36, name: 'Le Profondità' },
+  ];
+  function worldOf(level) {
+    let w = WORLDS[0], next = null;
+    for (let k = 0; k < WORLDS.length; k++) if (level >= WORLDS[k].from) { w = WORLDS[k]; next = WORLDS[k + 1] || null; }
+    return { w, next };
+  }
+
+  function showHome() {
+    const home = $('#home');
+    const { w, next } = worldOf(state.maxLevel);
+    $('#hWorld').textContent = w.name;
+    $('#hLevel').textContent = state.maxLevel;
+    if (next) {
+      const span = next.from - w.from, at = state.maxLevel - w.from;
+      $('#hBar').style.width = Math.round(100 * at / span) + '%';
+      $('#hBarL').textContent = w.name;
+      $('#hBarR').textContent = (next.from - state.maxLevel) + ' livelli a ' + next.name;
+    } else {
+      $('#hBar').style.width = '100%';
+      $('#hBarL').textContent = w.name; $('#hBarR').textContent = 'livelli infiniti';
+    }
+    const doneCount = Object.keys(state.done).length;
+    $('#hDone').textContent = doneCount;
+    $('#hMoves').textContent = state.totalMoves;
+    $('#hHints').textContent = state.hintsUsed;
+    $('#hPlay').textContent = doneCount ? 'Continua · livello ' + state.level : 'Inizia l\'avventura';
+    // griglia livelli: sbloccati + 4 bloccati in anteprima
+    const chips = $('#hChips'); chips.innerHTML = '';
+    const total = state.maxLevel + 4;
+    for (let L = 1; L <= total; L++) {
+      const c = document.createElement('button'); c.className = 'chip';
+      const done = state.done[L];
+      if (L > state.maxLevel) c.classList.add('locked');
+      else if (done) c.classList.add('done');
+      if (L === state.level) c.classList.add('current');
+      c.innerHTML = L + (done ? '<small>✓ ' + done + '</small>' : '<small>' + E.paramsFor(L).n + '×' + E.paramsFor(L).n + '</small>');
+      if (L <= state.maxLevel) c.onclick = () => { startLevel(L); hideHome(); };
+      chips.appendChild(c);
+    }
+    home.hidden = false;
+    startFx();
+  }
+  function hideHome() { $('#home').hidden = true; stopFx(); resize(); }
+  $('#hPlay').onclick = () => { startLevel(state.level); hideHome(); };
+  $('#hRules').onclick = () => { $('#rules').hidden = false; };
+  $('#homeBtn').onclick = showHome;
+
+  // particelle: braci che salgono e scintille di fulmine
+  const fx = $('#homeFx'), fctx = fx.getContext('2d');
+  let fxRun = false, parts = [];
+  function startFx() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    fxRun = true; parts = [];
+    fx.width = fx.clientWidth * dpr; fx.height = fx.clientHeight * dpr;
+    for (let i = 0; i < 70; i++) parts.push(newPart(true));
+    requestAnimationFrame(fxFrame);
+  }
+  function stopFx() { fxRun = false; }
+  function newPart(anywhere) {
+    const bolt = Math.random() < 0.12;
+    return { x: Math.random() * fx.width, y: anywhere ? Math.random() * fx.height : fx.height + 10, r: (1 + Math.random() * 2.2) * dpr, vy: (0.25 + Math.random() * 0.6) * dpr, vx: (Math.random() - 0.5) * 0.3 * dpr, life: Math.random(), bolt, ph: Math.random() * 7 };
+  }
+  function fxFrame(now) {
+    if (!fxRun) return;
+    requestAnimationFrame(fxFrame);
+    fctx.clearRect(0, 0, fx.width, fx.height);
+    // bagliore in basso (la tana)
+    const g = fctx.createRadialGradient(fx.width / 2, fx.height * 1.05, 0, fx.width / 2, fx.height * 1.05, fx.height * 0.7);
+    g.addColorStop(0, 'rgba(255,138,31,.22)'); g.addColorStop(1, 'rgba(255,138,31,0)');
+    fctx.fillStyle = g; fctx.fillRect(0, 0, fx.width, fx.height);
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      p.y -= p.vy; p.x += p.vx + Math.sin(now / 900 + p.ph) * 0.2 * dpr; p.life -= 0.0025;
+      if (p.y < -10 || p.life <= 0) { parts[i] = newPart(false); continue; }
+      const a = Math.min(1, p.life * 2) * (p.bolt ? (0.5 + 0.5 * Math.sin(now / 80 + p.ph)) : 1);
+      fctx.globalAlpha = a * 0.85;
+      fctx.fillStyle = p.bolt ? '#7fe3ff' : (p.r > 2.2 * dpr ? '#ffd27a' : '#ff8a1f');
+      fctx.beginPath(); fctx.arc(p.x, p.y, p.r, 0, 7); fctx.fill();
+    }
+    fctx.globalAlpha = 1;
+  }
+
   // ---------- avvio ----------
   if (state.level > state.maxLevel) state.level = state.maxLevel;
   startLevel(state.level);
   requestAnimationFrame(draw);
+  showHome();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }

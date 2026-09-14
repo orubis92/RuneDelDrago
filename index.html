@@ -10,6 +10,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap">
 <style>
   :root { --bg:#1b1714; --panel:#25201b; --text:#f1e8dc; --muted:#a4958a; --fire:#ff8a1f; --bolt:#7fe3ff; --gold:#e6b84a; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -38,12 +40,75 @@
   .card p { line-height:1.45; margin:8px 0; font-size:15px; }
   .card .row { display:flex; gap:10px; margin-top:14px; }
   .card .row button { flex:1; }
+  /* ---- Home ---- */
+  #home { position:fixed; inset:0; z-index:20; background:var(--bg); display:flex; flex-direction:column; overflow:hidden; }
+  #homeFx { position:absolute; inset:0; width:100%; height:100%; }
+  #home .inner { position:relative; flex:1; overflow:auto; padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:18px; max-width:520px; width:100%; margin:0 auto; }
+  .brand { text-align:center; margin-top:4vh; }
+  .brand .eyebrow { font-size:12px; letter-spacing:.25em; text-transform:uppercase; color:var(--muted); }
+  .brand h1 { font-family:"Cinzel", Georgia, "Times New Roman", serif; font-size:clamp(34px, 10vw, 46px); line-height:1.05; margin:6px 0 4px; color:var(--gold); text-shadow:0 0 24px rgba(255,138,31,.35); letter-spacing:.02em; }
+  .brand p { margin:0; color:var(--muted); font-size:14px; }
+  .progress { background:rgba(37,32,27,.85); border:1px solid #3b332c; border-radius:16px; padding:14px 16px; backdrop-filter:blur(4px); }
+  .progress .world { font-size:12px; letter-spacing:.15em; text-transform:uppercase; color:var(--bolt); }
+  .progress .big { display:flex; align-items:baseline; gap:8px; margin:2px 0 10px; }
+  .progress .big b { font-size:34px; color:var(--text); font-variant-numeric:tabular-nums; }
+  .progress .big span { color:var(--muted); font-size:14px; }
+  .bar { height:6px; background:#3b332c; border-radius:3px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:linear-gradient(90deg, var(--fire), var(--gold)); border-radius:3px; }
+  .barLabel { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:6px; }
+  .kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:12px; }
+  .kpi { background:rgba(27,23,20,.7); border-radius:10px; padding:8px 10px; }
+  .kpi b { display:block; font-size:18px; font-variant-numeric:tabular-nums; }
+  .kpi span { font-size:11px; color:var(--muted); letter-spacing:.05em; text-transform:uppercase; }
+  .actions { display:flex; flex-direction:column; gap:10px; }
+  .actions button { width:100%; padding:16px; font-size:17px; border-radius:14px; }
+  .actions .primary { box-shadow:0 6px 24px rgba(255,138,31,.35); }
+  .levels h3 { margin:0 0 8px; font-size:13px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); }
+  .chips { display:grid; grid-template-columns:repeat(auto-fill, minmax(52px, 1fr)); gap:8px; }
+  .chip { position:relative; aspect-ratio:1; border-radius:10px; background:var(--panel); border:1px solid #3b332c; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:700; font-size:15px; cursor:pointer; font-variant-numeric:tabular-nums; }
+  .chip small { font-size:10px; color:var(--muted); font-weight:400; }
+  .chip.done { border-color:var(--gold); color:var(--gold); }
+  .chip.current { border-color:var(--fire); box-shadow:0 0 0 2px rgba(255,138,31,.35) inset; }
+  .chip.locked { opacity:.35; cursor:default; }
+  .chip.locked::after { content:"🔒"; font-size:12px; position:absolute; right:4px; top:3px; }
+  @media (prefers-reduced-motion: reduce) { #homeFx { display:none; } }
   .legend { display:grid; grid-template-columns:auto 1fr; gap:8px 12px; align-items:center; margin:12px 0; font-size:14px; }
   .sw { width:22px; height:22px; border-radius:6px; }
 </style>
 </head>
 <body>
+  <div id="home">
+    <canvas id="homeFx"></canvas>
+    <div class="inner">
+      <div class="brand">
+        <div class="eyebrow">Enigma a circuiti</div>
+        <h1>Rune del Drago</h1>
+        <p>Fuoco, ghiaccio e fulmine. Un tocco, una rotazione.</p>
+      </div>
+      <div class="progress">
+        <div class="world" id="hWorld">La Bocca della Tana</div>
+        <div class="big"><b id="hLevel">1</b><span>livello raggiunto</span></div>
+        <div class="bar"><i id="hBar" style="width:0%"></i></div>
+        <div class="barLabel"><span id="hBarL">Inizio del mondo</span><span id="hBarR">prossimo mondo</span></div>
+        <div class="kpis">
+          <div class="kpi"><b id="hDone">0</b><span>tane aperte</span></div>
+          <div class="kpi"><b id="hMoves">0</b><span>mosse</span></div>
+          <div class="kpi"><b id="hHints">0</b><span>indizi</span></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="hPlay" class="primary">Continua</button>
+        <button id="hRules">Regole</button>
+      </div>
+      <div class="levels">
+        <h3>Livelli</h3>
+        <div class="chips" id="hChips"></div>
+      </div>
+    </div>
+  </div>
+
   <header>
+    <button id="homeBtn" title="Home" style="padding:8px 12px;min-height:40px">⌂</button>
     <h1>Rune del Drago<small>enigma a circuiti</small></h1>
     <div class="stats"><span>Livello <b id="lvl">1</b></span><span>Mosse <b id="moves">0</b></span></div>
   </header>
